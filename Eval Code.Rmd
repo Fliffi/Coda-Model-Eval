@@ -1,0 +1,46 @@
+---
+title: "CoDa Model Evaluation"
+author: "Nicholas Gecks-Preston"
+output:
+  html_document:
+    df_print: paged
+  html:
+    embed-resources: yes
+editor: source
+---
+
+```{r setup, include=FALSE}
+# This chunk is for the document and package setup
+
+## Clear the Workspace
+rm(list = ls())
+if (length((.packages())) > 7){
+invisible(lapply(paste0("package:", names(sessionInfo()$otherPkgs)),   # Unload add-on packages
+                 detach,
+                 character.only = TRUE, unload = TRUE))
+}
+
+## Setup Packages + Knit
+knitr::opts_chunk$set(echo = FALSE, comment=NA, warning = FALSE)
+pckgs <- c("tidyverse", "plotly", "broom", "readr")
+lapply(pckgs, require, character.only = TRUE)
+rm(list = ls())
+```
+
+
+
+```{r, include=FALSE, eval=FALSE}
+# Use this to Read the Data in
+
+holder <- list.files(pattern = "*.csv")
+data <- sapply(holder, read.csv)
+
+
+```
+
+
+### Required Packages
+1. tidyverse
+2. plotly 
+3. broom
+4. readr
