@@ -34,16 +34,10 @@ rm(list = ls())
 
 holder <- list.files(pattern = "*.csv")
 data <- sapply(holder, read.csv)
-
-
-```
-
-## Test Commit
-```{r}
-sds
-
+rm("holder")
 
 ```
+
 
 ### Required Packages
 1. tidyverse
