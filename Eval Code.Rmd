@@ -27,8 +27,6 @@ lapply(pckgs, require, character.only = TRUE)
 rm(list = ls())
 ```
 
-
-
 ```{r, include=FALSE, eval=FALSE}
 # Use this to Read the Data in
 
@@ -38,6 +36,40 @@ rm("holder")
 
 ```
 
+```{r, include=TRUE}
+test <- read.csv("method_1.csv")
+
+hold2 <- matrix(, nrow = 10, ncol = nrow(test))
+for (k in 1:nrow(test)) {
+hold2[,k] = unlist(strsplit(test[k, 1], "\t"))
+}
+hold2 = t(hold2)
+df1 = data.frame(ID = hold2[,1], A = hold2[,2], B = hold2[,3], C = hold2[,4], D = hold2[,5], E = hold2[,6], F = hold2[,7], G = hold2[,8], H = hold2[,9], I =hold2[,10])
+
+
+test2 <- read.csv("truth.csv")
+
+hold3 <- matrix(, nrow = 10, ncol = nrow(test2))
+for (k in 1:nrow(test2)) {
+hold3[,k] = unlist(strsplit(test[k, 1], "\t"))
+}
+hold3 = t(hold3)
+df2 = data.frame(ID = hold3[,1], A = hold3[,2], B = hold3[,3], C = hold3[,4], D = hold3[,5], E = hold3[,6], F = hold3[,7], G = hold3[,8], H = hold3[,9], I =hold3[,10])
+
+rm("hold2", "hold3", "test", "test2", "k")
+
+```
+
+
+```{r, include=TRUE}
+
+
+
+```
+
+
+
+dgf
 
 ### Required Packages
 1. tidyverse
