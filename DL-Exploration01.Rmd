@@ -1,0 +1,195 @@
+---
+title: "David's initial exploration"
+author: "David Lovell"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+
+```{r setup, include=FALSE}
+# Set options to control the behaviour of knitr, dplyr, etc
+knitr::opts_chunk$set(echo = FALSE, comment=NA, warning = FALSE, message = FALSE)
+options(knitr.table.format = "html", dplyr.summarise.inform = FALSE, tidyverse.quiet = TRUE, width = 100)
+```
+
+```{r load-libraries, warning=FALSE, message=FALSE, include=FALSE}
+rm(list = ls())
+library(tidyverse)
+```
+
+# Try reading in one of Khoa's files
+
+Khoa has sent us a range of `.csv` files containing the predictions of the proportion of different cell types in a sample.
+He's sent us the predictions made by 8 different models, and he's sent us the ground truth.
+
+Our first job is to ensure we can ingest and interpret these data files.
+
+Let's try reading `method_1.csv`:
+
+```{r}
+read_tsv("method_1.csv")
+```
+
+Cool! That works. It is actually a TAB separated value file, not a `.csv` and the first column has no name (the string `...1` is used as a legal placeholder) so we can fix that with...
+
+```{r}
+read_tsv("method_1.csv") %>% rename(ID="...1")
+```
+
+# Try reading in the truth
+
+So, let's see what we have here:
+```{r}
+read_tsv("truth.csv")
+```
+
+OK! So we have a similar file of IDs and (I hope) proportions.
+
+# Combine model predictions with ground truth
+
+I think a good way to do this is to do a database join using the ID as a key... I'm not quite sure how to do this, so I will have a play with some cut down data:
+```{r}
+read_tsv("method_1.csv", n_max=10, show_col_types = FALSE) %>% rename(ID="...1") %>% select(ID, A, B) -> method1
+read_tsv("truth.csv",    n_max=10, show_col_types = FALSE) %>% rename(ID="...1") %>% select(ID, A, B) -> truth
+```
+
+Let's do a _full_ join (I think!) using the suffixes `.pred` for "predicted" and `.act` for "actual"
+
+```{r}
+full_join(method1, truth, by="ID", suffix=c(".pred", ".act"))
+```
+
+Looking good! Now let's see how we might ingest all 8 models' worth of predictions. If the data is small enough, my usual strategy is to create a single data frame that I can then subset. If the data is too big for that, I'm forced to work in chunks.
+
+# Let's try reading in all the model predictions
+
+There is probably a neater more compact way to do this, but I'm happy to be verbose.
+
+```{r}
+n_max <- 10
+bind_rows(
+  .id="model",
+  read_tsv("method_1.csv", n_max=n_max, show_col_types = F),
+  read_tsv("method_2.csv", n_max=n_max, show_col_types = F)
+) %>% 
+  rename(ID="...1") -> predictions
+
+```
+
+Now get the truth:
+```{r}
+read_tsv("truth.csv",    n_max=n_max, show_col_types = F) %>% rename(ID="...1")  -> truth
+```
+
+Now join to the truth:
+```{r}
+full_join(predictions, truth, by="ID", suffix=c(".pred", ".act")) -> khoa
+```
+
+# Show how to convert to long format
+
+`ggplot()` requires data in _long_ format, i.e., one measurement per row. What I want to get to is data in the form of
+
+```
+model ID         component predicted actual
+1     96b0a24b…  A         0         0.0591
+...
+```
+
+This is a job for `pivot_longer()`. I'm going to approach this in two stages maybe...
+```{r}
+pivot_longer(
+  khoa, 
+  cols= -c(model, ID), 
+  names_to = c(".value", "label"), 
+  names_pattern = "(.).(.*)")
+```
+
+Close but no cigar!
+
+```{r}
+pivot_longer(
+  khoa, 
+  cols= -c(model, ID), 
+  names_to = c(".value", "label"), 
+  names_pattern = "(.).(.*)")
+```
+
+
+
+```{r}
+pnl <- tibble(
+  x = 1:4,
+  a = c(1, 1,0, 0),
+  b = c(0, 1, 1, 1),
+  y1 = rnorm(4),
+  y2 = rnorm(4),
+  z1 = rep(3, 4),
+  z2 = rep(-2, 4),
+)
+```
+
+```{r}
+pnl %>% 
+  pivot_longer(
+    !c(x, a, b), 
+    names_to = c(".value", "time"), 
+    names_pattern = "(.)(.)"
+  )
+```
+
+
+
+
+```{r}
+tibble(
+  x = 1:4,
+  a = c(1, 1,0, 0),
+  b = c(0, 1, 1, 1),
+  y.pred = rnorm(4),
+  y.act = rnorm(4),
+  z1 = rep(3, 4),
+  z2 = rep(-2, 4),
+) %>% 
+  pivot_longer(
+    !c(x, a, b), 
+    names_to = c(".value", "time"), 
+    names_pattern = "(.).(.*)"
+  )
+
+```
+
+
+
+```{r}
+khoa %>% 
+  pivot_longer(
+    cols= -c(model, ID), 
+    names_to = c(".value", "label"), 
+    names_pattern = "(.).(.*)") %>%
+  pivot_longer(cols=-c(model, ID, label), names_to = "component") %>%
+  pivot_wider(names_from = label) -> khoa.long
+```
+
+
+```{r}
+ggplot(khoa.long, aes(x=act, y=pred, group=fct_cross(model, ID))) +
+  geom_point() + geom_line() + coord_equal(xlim=c(0,1), ylim=c(0,1)) + facet_grid(model ~ component)
+```
+
+
+
+```{r}
+ggplot(khoa.long, aes(x=act, y=pred)) +
+  geom_abline(slope=1, color="white") + 
+  geom_point() + 
+  coord_equal(xlim=c(0,1), ylim=c(0,1)) + 
+  facet_grid(model ~ component)
+```
+
+
+
+
+
+
+

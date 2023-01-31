@@ -1,0 +1,144 @@
+---
+title: "Exploring the Dirichlet distribution and friends"
+author: "David Lovell"
+format:
+  html:
+    embed-resources: true
+editor: visual
+---
+
+```{r setup, include=FALSE}
+# Set options to control the behaviour of knitr, dplyr, etc
+knitr::opts_chunk$set(echo = FALSE, comment=NA, warning = FALSE, message = FALSE)
+options(knitr.table.format = "html", dplyr.summarise.inform = FALSE, tidyverse.quiet = TRUE, width = 100)
+```
+
+```{r load-libraries, warning=FALSE, message=FALSE, include=FALSE}
+rm(list = ls())
+library(DirichletReg)
+library(tidyverse)
+library(ggridges)
+```
+
+## About this document
+
+This document is my attempt to improve my intuition about the [Dirichlet distribution](https://en.wikipedia.org/wiki/Dirichlet_distribution) and its conjugate, the [multinomial distribution](https://en.wikipedia.org/wiki/Multinomial_distribution), of which the [categorical distribution](https://en.wikipedia.org/wiki/Categorical_distribution) is a special case.
+
+## Visualising samples from Dirichlet distributions
+
+The Dirichlet distribution has $K\geq2$ categories and is parameterised by a vector $\boldsymbol\alpha=(\alpha_1,\ldots,\alpha_K)$ of *concentrations.*
+
+Each sample from $\mathrm{Dir}(\boldsymbol\alpha)$ will be a vector $(x_1, \ldots, x_K)$ where $x_i \in [0,1]$ and $\sum_{i=1}^K x_i = 1$.
+
+Dirichlet distributions with $K=3$ are often used for illustration purposes because they can be visualised in 2 dimensions. What about larger values of $K$?
+
+First, let's create some data using functions from the `DirichletReg` package. `sampleDirichlet(N, alpha)` generates `N` samples from a Dirichlet distribution with concentration parameters `alpha`. It returns the ID of the observation, the component of the ID\^th observation, and the actual (mean) and predicted (sampled) values of that observation.
+
+```{r fn-sampleDirichlet, echo=TRUE}
+sampleDirichlet <- function(N, alpha){
+  K <- length(alpha)
+  xmean <- alpha/sum(alpha)
+  predicted <- rdirichlet(N, alpha)
+
+  tibble(
+    ID        = as.character(rep(1:N, rep(K,N))),
+    component = rep(letters[1:K], N),
+    actual    = rep(xmean, N),
+    predicted = as.vector(t(predicted))
+  )
+}
+```
+
+```{r}
+alpha <- (8:1)*100
+alpha0 <- sum(alpha)
+N <- 100
+```
+
+Here are `r N` samples from $\mathbf{Dir}(`r alpha`)$
+
+```{r}
+ggplot(sampleDirichlet(N, alpha), aes(x=actual, y=predicted, group=ID)) + 
+  geom_line(alpha=0.1) + 
+  geom_abline(slope=1, colour="white") +
+  coord_equal(xlim = c(0,0.3), ylim=c(0,0.3))
+  
+```
+
+...and here are the differences between the samples and their means:
+
+```{r}
+ggplot(sampleDirichlet(N, alpha), aes(x=actual, y=predicted-actual, group=ID)) + 
+  geom_line(alpha=0.1) + 
+  geom_abline(slope=1, colour="white")
+```
+
+If we flip the axes, we can draw the marginal densities of each of the components
+
+```{r}
+ggplot(sampleDirichlet(N, alpha), aes(x=predicted, y=actual)) + 
+  geom_line(aes(group=ID), alpha=0.1) +
+  geom_point(alpha=0.1) +
+  geom_density_ridges(aes(group=actual), alpha=0.5) +
+  coord_equal()
+```
+
+Apparently, the marginal densities of each component are $X_i \sim \operatorname{Beta} (\alpha_i, \alpha_0 - \alpha_i)$ which, in this case gives the following $\operatorname{Beta}(\alpha,\beta)$ distributions for each actual component probability:
+
+```{r}
+tibble(
+  actual=alpha/alpha0,
+  alpha=alpha,
+  beta=alpha0-alpha
+) -> Beta.parameters
+Beta.parameters
+```
+
+```{r}
+Dbeta <- function(actual, alpha, beta){
+  tibble(
+    actual=rep(actual,1001),
+    x=seq(0,1, length.out=1001),
+    dbeta=dbeta(x, alpha, beta)
+  )
+}
+pmap(Beta.parameters, Dbeta) %>% list_rbind -> dbetas
+```
+
+So, lets just plot the theoretical marginal distributions in red:
+
+```{r}
+ggplot(sampleDirichlet(N, alpha), aes(x=predicted, y=actual)) + 
+  geom_line(aes(x=predicted, y=actual, group=ID), alpha=0.1) +
+  geom_point(aes(x=predicted, y=actual), alpha=0.1) +
+  geom_density_ridges(aes(x=predicted, y=actual, group=actual), alpha=0.5) +
+  geom_density_ridges(data=dbetas, aes(x=x, y=actual, height=dbeta, group=actual),
+                      stat = "identity", alpha=0.1, fill=NA, color="red") +
+  coord_equal(xlim=c(0,0.3), ylim=c(0,0.3))
+```
+
+## Less concentrated Dirichlet
+
+```{r}
+alpha <- (8:1)*10
+alpha0 <- sum(alpha)
+N <- 100
+
+tibble(
+  actual=alpha/alpha0,
+  alpha=alpha,
+  beta=alpha0-alpha
+) %>% pmap(Dbeta) %>% list_rbind -> dbetas
+```
+
+Here are `r N` samples from $\mathbf{Dir}(`r alpha`)$
+
+```{r}
+ggplot(sampleDirichlet(N, alpha), aes(x=predicted, y=actual)) + 
+  geom_line(aes(x=predicted, y=actual, group=ID), alpha=0.1) +
+  geom_point(aes(x=predicted, y=actual), alpha=0.1) +
+  geom_density_ridges(aes(x=predicted, y=actual, group=actual), alpha=0.5) +
+  geom_density_ridges(data=dbetas, aes(x=x, y=actual, height=dbeta, group=actual),
+                      stat = "identity", alpha=0.1, fill=NA, color="red") +
+  coord_equal(xlim=c(0,0.3), ylim=c(0,0.3))
+```
