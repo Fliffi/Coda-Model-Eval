@@ -30,7 +30,7 @@ Next I need to read in the files Khoa has given me, I found out from my previous
 I will do this all at the same time as I have already done the singular case with David
 
 ```{r,warning=FALSE, results='hide', message=FALSE}
-n_max <- 10
+n_max <- 1000
 list.files(pattern = "*.csv") %>% lapply(read_tsv, n_max=n_max, show_col_types = FALSE) -> Raw_Data
 names(Raw_Data) <- gsub(".csv", "",
                  list.files(pattern = "*.csv",full.names = FALSE),
@@ -74,3 +74,6 @@ ggplot(Khoa, aes(x=act, y=pred)) +
 ```
 
 Now we have a graph let's quantify the accuracy of the predictions.
+
+
+
