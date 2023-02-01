@@ -23,6 +23,7 @@ library("tidyverse")
 library("plotly")
 library("broom")
 library("readr")
+library("reshape")
 ```
 
 Next I need to read in the files Khoa has given me, I found out from my previous exploration with david that they are in fact not csvs' files but tsvs'
@@ -30,7 +31,7 @@ Next I need to read in the files Khoa has given me, I found out from my previous
 I will do this all at the same time as I have already done the singular case with David
 
 ```{r,warning=FALSE, results='hide', message=FALSE}
-n_max <- 1000
+n_max <- 10
 list.files(pattern = "*.csv") %>% lapply(read_tsv, n_max=n_max, show_col_types = FALSE) -> Raw_Data
 names(Raw_Data) <- gsub(".csv", "",
                  list.files(pattern = "*.csv",full.names = FALSE),
@@ -75,5 +76,31 @@ ggplot(Khoa, aes(x=act, y=pred)) +
 
 Now we have a graph let's quantify the accuracy of the predictions.
 
+```{r}
 
+Khoa['Absolute Error'] = (Khoa$pred - Khoa$act)
+aggregate(`Absolute Error` ~ component , Khoa, FUN = sum)
+
+```
+This is a somewhat interesting graph as it gives the absolute error of all components B.
+
+```{r}
+
+Khoa['Absolute Error'] = (Khoa$pred - Khoa$act)
+test <- aggregate(`Absolute Error` ~ component + model , Khoa, FUN = sum)
+
+test2 <- test$`Absolute Error`
+
+heat <- matrix(test2, nrow = 8, ncol = 9, byrow=TRUE)
+
+heat <- melt(heat)
+
+ggplot(heat, aes(X1, X2)) + 
+  geom_tile(aes(fill = value)) +
+  scale_fill_gradient2(low = "Red", mid = "white", high = "green") +
+  xlab("Components")+
+  ylab("Model")
+
+
+```
 
