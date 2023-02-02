@@ -15,6 +15,8 @@ options(knitr.table.format = "html", dplyr.summarise.inform = FALSE, tidyverse.q
 ```{r load-libraries, warning=FALSE, message=FALSE, include=FALSE}
 rm(list = ls())
 library(tidyverse)
+library(scales)    # For trans_format()
+library(patchwork)
 ```
 
 # Try reading in one of Khoa's files
@@ -73,7 +75,6 @@ bind_rows(
   read_tsv("M2.csv", n_max=n_max, show_col_types = F)
 ) %>% 
   rename(ID="...1") -> predictions
-
 ```
 
 Now get the truth:
@@ -105,60 +106,7 @@ pivot_longer(
   names_pattern = "(.).(.*)")
 ```
 
-Close but no cigar!
-
-```{r}
-pivot_longer(
-  khoa, 
-  cols= -c(model, ID), 
-  names_to = c(".value", "label"), 
-  names_pattern = "(.).(.*)")
-```
-
-
-
-```{r}
-pnl <- tibble(
-  x = 1:4,
-  a = c(1, 1,0, 0),
-  b = c(0, 1, 1, 1),
-  y1 = rnorm(4),
-  y2 = rnorm(4),
-  z1 = rep(3, 4),
-  z2 = rep(-2, 4),
-)
-```
-
-```{r}
-pnl %>% 
-  pivot_longer(
-    !c(x, a, b), 
-    names_to = c(".value", "time"), 
-    names_pattern = "(.)(.)"
-  )
-```
-
-
-
-
-```{r}
-tibble(
-  x = 1:4,
-  a = c(1, 1,0, 0),
-  b = c(0, 1, 1, 1),
-  y.pred = rnorm(4),
-  y.act = rnorm(4),
-  z1 = rep(3, 4),
-  z2 = rep(-2, 4),
-) %>% 
-  pivot_longer(
-    !c(x, a, b), 
-    names_to = c(".value", "time"), 
-    names_pattern = "(.).(.*)"
-  )
-
-```
-
+Close but no cigar! After looking at `vignette("pivot")` 
 
 
 ```{r}
@@ -174,7 +122,10 @@ khoa %>%
 
 ```{r}
 ggplot(khoa.long, aes(x=act, y=pred, group=fct_cross(model, ID))) +
-  geom_point() + geom_line() + coord_equal(xlim=c(0,1), ylim=c(0,1)) + facet_grid(model ~ component)
+  geom_point() + 
+  geom_line() + 
+  coord_equal(xlim=c(0,1), ylim=c(0,1)) + 
+  facet_grid(model ~ component)
 ```
 
 
@@ -188,8 +139,262 @@ ggplot(khoa.long, aes(x=act, y=pred)) +
 ```
 
 
+# Now ingest the full dataset
 
 
+```{r}
+n_max <- Inf
+bind_rows(
+  .id="model",
+  read_tsv("method_1.csv", n_max=n_max, show_col_types = F),
+  read_tsv("method_2.csv", n_max=n_max, show_col_types = F),
+  read_tsv("method_3.csv", n_max=n_max, show_col_types = F),
+  read_tsv("method_4.csv", n_max=n_max, show_col_types = F),
+  read_tsv("method_5.csv", n_max=n_max, show_col_types = F),
+  read_tsv("method_6.csv", n_max=n_max, show_col_types = F),
+  read_tsv("method_7.csv", n_max=n_max, show_col_types = F),
+  read_tsv("method_8.csv", n_max=n_max, show_col_types = F)
+) %>% 
+  rename(ID="...1") -> predictions
+```
+
+Now get the truth:
+```{r}
+read_tsv("truth.csv",    n_max=n_max, show_col_types = F) %>% rename(ID="...1")  -> truth
+```
+
+Now join to the truth:
+```{r}
+full_join(predictions, truth, by="ID", suffix=c(".predicted", ".actual")) -> khoa
+```
+
+```{r}
+khoa %>% 
+  pivot_longer(
+    cols= -c(model, ID), 
+    names_to = c(".value", "label"), 
+    names_pattern = "(.).(.*)") %>%
+  pivot_longer(cols=-c(model, ID, label), names_to = "component") %>%
+  pivot_wider(names_from = label) -> khoa.long
+```
+
+# Visualise data
+
+The fun bit! But first, let's make sure we understand the distribution of the actual and predicted component values. From what I know, the actuals will take on a finite set of values
+```{r}
+length(unique(khoa.long$actual))
+```
+
+Here's their distribution:
+```{r}
+khoa.long %>%
+  pivot_longer(cols=-c(model, ID, component), names_to = "label") %>%
+  ggplot(aes(x=value)) + 
+  geom_histogram(binwidth = 1e-3) +
+  facet_grid(label~.)
+```
+
+ooh. Lots of zeros and then actual cases at 0.05 intervals. Hmmm, the zeros will be a challenge for log transformations. Let's just filter them out to get a sense of the number of non-zero component values.
+
+Here's their distribution:
+```{r}
+khoa.long %>%
+  pivot_longer(cols=-c(model, ID, component), names_to = "label") %>%
+  filter(value > 0) %>%
+  ggplot(aes(x=value)) + 
+  geom_histogram(binwidth = 1e-3) +
+  facet_grid(label~.)
+```
+
+Wow, still a lot of very small predictions... let's zoom in a bit:
+```{r}
+khoa.long %>%
+  pivot_longer(cols=-c(model, ID, component), names_to = "label") %>%
+  filter(0 < value, value < 1e-3) %>%
+  ggplot(aes(x=value)) + 
+  geom_histogram(binwidth = 1e-6) +
+  facet_grid(label~.)
+```
+
+Goodness! Let's zoom in even more!
+```{r}
+khoa.long %>%
+  pivot_longer(cols=-c(model, ID, component), names_to = "label") %>%
+  filter(0 < value, value < 1e-10) %>%
+  ggplot(aes(x=value)) + 
+  geom_histogram(binwidth = 1e-13) +
+  facet_grid(label~.)
+```
+That's pretty crazy huh? We have models that are estimating the abundance of cells in a sample to be 1 in a trillion. Given that there are estimated to be about 30 trillion (human) cells in the human body, I doubt we could get a trillion cells in a needle biopsy, unless we had a really big needle.
+
+The distribution of actual proportions Makes sense because every time we set one of the components to be large, there will be lots of smaller components to fit around. I wonder what the smallest non-zero actual and predicted values are?
+
+```{r}
+khoa.long %>% filter(actual    > 0) %>% pull(actual) %>% min
+khoa.long %>% filter(predicted > 0) %>% pull(predicted) %>% min
+```
+
+```{r}
+lims <- c(1e-3,1e0)
+npoints <- 10000
+```
+
+Here are `r npoints`  out of `r nrow(khoa.long)` (i.e., `r round(npoints * 100 / nrow(khoa.long),3)`%) of the data:
+
+```{r}
+ggplot(slice_sample(khoa.long, n=npoints), aes(x=predicted, y=actual)) +
+  geom_abline(slope=1, color="white") + 
+  geom_point(alpha=0.1) + 
+  scale_x_log10() + scale_y_log10() +
+  coord_equal(xlim=lims, ylim=lims) + 
+  theme(axis.text.x = element_text(angle = 90)) +
+  facet_grid(model ~ component, labeller=label_both) + 
+  labs(
+    title="Actual component proportions vs predicted proportions",
+    subtitle=sprintf("Showing a sample of %d points on a log-log scale from %0.1e to %0.1e", npoints, lims[1], lims[2])
+  )
+```
+
+Model 3 looks pretty crap!
+
+For the full dataset, we don't want to be plotting a bajillion points, so let's look at the density contours:
+```{r}
+ggplot(slice_sample(khoa.long, n=npoints), aes(x=predicted, y=actual)) +
+  geom_abline(slope=1, color="white") + 
+  geom_density_2d() + 
+  scale_x_log10() + scale_y_log10() +
+  coord_equal(xlim=lims, ylim=lims) + 
+  theme(axis.text.x = element_text(angle = 90)) +
+  facet_grid(model ~ component, labeller=label_both) + 
+  labs(
+    title="Actual component proportions vs predicted proportions",
+    subtitle=sprintf("The density of a sample of %d points on a log-log scale from %0.1e to %0.1e", npoints, lims[1], lims[2])
+  )
+```
+
+Hmmm... that's not great. Maybe the data is too dense at points off the plot? Let's filter out the zero actuals and predictions and see
+
+```{r}
+khoa.long %>% filter(actual > 0, predicted > 0) %>% slice_sample(n=npoints) %>% 
+ggplot(aes(x=predicted, y=actual)) +
+  geom_abline(slope=1, color="white") + 
+  geom_density_2d() + 
+  scale_x_log10() + scale_y_log10() +
+  coord_equal(xlim=lims, ylim=lims) + 
+  theme(axis.text.x = element_text(angle = 90)) +
+  facet_grid(model ~ component, labeller=label_both) + 
+  labs(
+    title="Predicted component proportions vs actual proportions",
+    subtitle=sprintf("The density of a sample of %d points on a log-log scale from %0.1e to %0.1e", npoints, lims[1], lims[2]),
+    caption="Points with zero actual or predicted values have been removed."
+  )
+```
+
+Ah, now I think I get it: the contours apply to all the facets, and the density of points in some of the facets never reaches the lowest contour. Let's try putting the breaks on a log10 scale
+
+```{r}
+khoa.long %>% filter(actual > 0, predicted > 0) %>% slice_sample(n=npoints) %>% 
+ggplot(aes(x=predicted, y=actual)) +
+  geom_abline(slope=1, color="white") + 
+  geom_density_2d(breaks=10^(-(9:1))) + 
+  scale_x_log10() + scale_y_log10() +
+  coord_equal(xlim=lims, ylim=lims) + 
+  theme(axis.text.x = element_text(angle = 90)) +
+  facet_grid(model ~ component, labeller=label_both) + 
+  labs(
+    title="Predicted component proportions vs actual proportions",
+    subtitle=sprintf("The density of a sample of %d points on a log-log scale from %0.1e to %0.1e", npoints, lims[1], lims[2]),
+    caption="Points with zero actual or predicted values have been removed."
+  )
+```
+
+Yuk... lumpy contours... let's log the data _then_ plot the contours:
+```{r}
+khoa.long %>% filter(actual > 0, predicted > 0) %>% slice_sample(n=npoints) %>% 
+ggplot(aes(x=log10(predicted), y=log10(actual))) +
+  geom_abline(slope=1, color="white") + 
+  geom_density_2d(breaks=10^(-(9:1))) + 
+  # cale_x_log10() + scale_y_log10() +
+  coord_equal(xlim=log10(lims), ylim=log10(lims)) + 
+  theme(axis.text.x = element_text(angle = 90)) +
+  facet_grid(model ~ component, labeller=label_both) + 
+  labs(
+    title="Predicted component proportions vs actual proportions",
+    subtitle=sprintf("The density of a sample of %d points on a log-log scale from %0.1e to %0.1e", npoints, lims[1], lims[2]),
+    caption="Points with zero actual or predicted values have been removed."
+  )
+```
+
+Meh!
+
+OK, another approach. Rather than visualise predicted versus actual, let's look at the _relative difference_ between predicted and actual, vs actual. (NB. this takes a few minutes for 1M points... but it's worth it)
+
+```{r}
+npoints <- 10000
+xlim <- c(1e-9,1e0)
+ylim <- c(1e-4, 1e4)
+
+clip <- function(x, low, high){
+  pmin(high, pmax(low, x)) 
+}
+
+khoa.long %>% filter(actual > 0, predicted > 0) %>% slice_sample(n=npoints) %>% 
+ggplot(
+  aes(
+    x=clip(predicted, xlim[1], xlim[2]),
+    y=clip(predicted/actual, ylim[1], ylim[2]))
+  ) +
+  geom_hline(yintercept=1,  lty=2) + 
+  geom_point(alpha=0.25, size=0.5) + 
+  geom_smooth(method = "loess") + 
+  scale_x_log10(labels = trans_format("log10", math_format(10^.x))) +
+  scale_y_log10(labels = trans_format("log10", math_format(10^.x)), breaks=10^seq(from=-4, to=4, by=2)) +
+  coord_equal(xlim=xlim, ylim=ylim) + 
+  theme(axis.text.x = element_text(angle = 90)) +
+  facet_grid(model ~ component, labeller=label_both) + 
+  labs(
+    x="predicted", y="predicted/actual",
+    title="Predicted/actual component proportions vs predicted proportions",
+    subtitle=sprintf("Showing a sample of %d points on a log-log scale from x=%0.1e to x=%0.1e", npoints, lims[1], lims[2]),
+    caption="Points with zero actual or predicted values have been removed. Values outside the range of an axes have been set to the nearest in range value."
+  )
+```
 
 
+The big'un. I'm setting `eval=FALSE` so I can knit this document in a reasonable time.
+
+```{r eval=TRUE}
+xlim <- c(1e-9,1e0)
+ylim <- c(1e-4, 1e4)
+
+clip <- function(x, low, high){
+  pmin(high, pmax(low, x)) 
+}
+
+khoa.long %>% filter(actual > 0, predicted > 0) %>% 
+ggplot(
+  aes(
+    x=clip(predicted, xlim[1], xlim[2]),
+    y=clip(predicted/actual, ylim[1], ylim[2]))
+  ) +
+  geom_hline(yintercept=1,  lty=2) + 
+  geom_point(alpha=0.25, size=0.1) + 
+  # geom_smooth(method = "loess") + 
+  scale_x_log10(labels = trans_format("log10", math_format(10^.x))) +
+  scale_y_log10(labels = trans_format("log10", math_format(10^.x)), breaks=10^seq(from=-4, to=4, by=2)) +
+  coord_equal(xlim=xlim, ylim=ylim) + 
+  theme(axis.text.x = element_text(angle = 90)) +
+  facet_grid(model ~ component, labeller=label_both) + 
+  labs(
+    x="predicted", y="predicted/actual",
+    title="Predicted/actual component proportions vs predicted proportions",
+    subtitle=sprintf("Showing a sample of %d points on a log-log scale from x=%0.1e to x=%0.1e", npoints, lims[1], lims[2]),
+    caption="Points with zero actual or predicted values have been removed. Values outside the range of an axes have been set to the nearest in range value."
+  )
+```
+
+
+```{r}
+ggsave("plots/relative-vs-actual.png", width = 10, height=10, dpi=600)
+```
 
