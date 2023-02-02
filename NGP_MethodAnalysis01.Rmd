@@ -1,0 +1,106 @@
+---
+title: "NGP_MethodAnalysis01"
+author: "Nicholas Gecks-Preston"
+date: "2023-01-31"
+output: html_document
+---
+
+## Setup and Preabmle
+First I will make sure each time the code runs the enviroment and packages are clear.
+
+```{r setup}
+rm(list = ls())
+if (length((.packages())) > 7){
+invisible(lapply(paste0("package:", names(sessionInfo()$otherPkgs)),
+                 detach,
+                 character.only = TRUE, unload = TRUE))}
+```
+
+Next I will Library all the required packages.
+
+```{r, warning=FALSE, results='hide', message=FALSE}
+library("tidyverse")
+library("plotly")
+library("broom")
+library("readr")
+library("reshape")
+```
+
+Next I need to read in the files Khoa has given me, I found out from my previous exploration with david that they are in fact not csvs' files but tsvs'
+
+I will do this all at the same time as I have already done the singular case with David
+
+```{r,warning=FALSE, results='hide', message=FALSE}
+n_max <- 10
+list.files(pattern = "*.csv") %>% lapply(read_tsv, n_max=n_max, show_col_types = FALSE) -> Raw_Data
+names(Raw_Data) <- gsub(".csv", "",
+                 list.files(pattern = "*.csv",full.names = FALSE),
+                 fixed = TRUE)
+
+bind_rows(.id="model", Raw_Data[]) %>% rename(ID="...1") -> Bound_Data
+
+
+truth <- Bound_Data[which(Bound_Data$model == "truth"),]
+predictions <-Bound_Data[which(Bound_Data$model != "truth"),]
+rm("Raw_Data","Bound_Data")
+
+full_join(predictions, truth, by="ID", suffix=c(".pred", ".act")) %>% 
+  rename(model="model.pred") %>% 
+  subset(select = -c(model.act)) %>%
+  pivot_longer(
+    cols= -c(model, ID), 
+    names_to = c(".value", "label"), 
+    names_pattern = "(.).(.*)") %>%
+  pivot_longer(cols=-c(model, ID, label), names_to = "component") %>%
+  pivot_wider(names_from = label) -> Khoa
+
+rm("truth","predictions")
+
+```
+
+Oki so now we can easily plot this with gg plot I will borrow some of David's Code
+
+```{r}
+ggplot(Khoa, aes(x=act, y=pred)) +
+  geom_abline(slope=1, color="Red") + 
+  geom_point() + 
+  coord_equal(xlim=c(0,1), ylim=c(0,1)) + 
+  facet_grid(model ~ component) +
+  theme(axis.text.x=element_blank(),
+      axis.ticks.x=element_blank(),
+      axis.text.y=element_blank(),
+      axis.ticks.y=element_blank())+
+  xlab("Ground Truth")+
+  ylab("Model Prediction")
+```
+
+Now we have a graph let's quantify the accuracy of the predictions.
+
+```{r}
+
+Khoa['Absolute Error'] = (Khoa$pred - Khoa$act)
+aggregate(`Absolute Error` ~ component , Khoa, FUN = sum)
+
+```
+This is a somewhat interesting graph as it gives the absolute error of all components B.
+
+```{r}
+
+Khoa['Absolute Error'] = (Khoa$pred - Khoa$act)
+test <- aggregate(`Absolute Error` ~ component + model , Khoa, FUN = sum)
+
+test2 <- test$`Absolute Error`
+
+heat <- matrix(test2, nrow = 8, ncol = 9, byrow=TRUE)
+
+heat <- melt(heat)
+
+ggplot(heat, aes(X1, X2)) + 
+  geom_tile(aes(fill = value)) +
+  scale_fill_gradient2(low = "Red", mid = "white", high = "green") +
+  xlab("Components")+
+  ylab("Model")
+
+
+```
+

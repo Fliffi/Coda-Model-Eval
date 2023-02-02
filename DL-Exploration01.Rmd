@@ -29,13 +29,13 @@ Our first job is to ensure we can ingest and interpret these data files.
 Let's try reading `method_1.csv`:
 
 ```{r}
-read_tsv("method_1.csv")
+read_tsv("M1.csv")
 ```
 
 Cool! That works. It is actually a TAB separated value file, not a `.csv` and the first column has no name (the string `...1` is used as a legal placeholder) so we can fix that with...
 
 ```{r}
-read_tsv("method_1.csv") %>% rename(ID="...1")
+read_tsv("M1.csv") %>% rename(ID="...1")
 ```
 
 # Try reading in the truth
@@ -51,7 +51,7 @@ OK! So we have a similar file of IDs and (I hope) proportions.
 
 I think a good way to do this is to do a database join using the ID as a key... I'm not quite sure how to do this, so I will have a play with some cut down data:
 ```{r}
-read_tsv("method_1.csv", n_max=10, show_col_types = FALSE) %>% rename(ID="...1") %>% select(ID, A, B) -> method1
+read_tsv("M1.csv", n_max=10, show_col_types = FALSE) %>% rename(ID="...1") %>% select(ID, A, B) -> method1
 read_tsv("truth.csv",    n_max=10, show_col_types = FALSE) %>% rename(ID="...1") %>% select(ID, A, B) -> truth
 ```
 
@@ -71,8 +71,8 @@ There is probably a neater more compact way to do this, but I'm happy to be verb
 n_max <- 10
 bind_rows(
   .id="model",
-  read_tsv("method_1.csv", n_max=n_max, show_col_types = F),
-  read_tsv("method_2.csv", n_max=n_max, show_col_types = F)
+  read_tsv("M1.csv", n_max=n_max, show_col_types = F),
+  read_tsv("M2.csv", n_max=n_max, show_col_types = F)
 ) %>% 
   rename(ID="...1") -> predictions
 ```
