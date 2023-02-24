@@ -1,0 +1,232 @@
+---
+title: "DL Exploration 02"
+author: "David Lovell"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+
+```{r setup, include=FALSE}
+# Set options to control the behaviour of knitr, dplyr, etc
+knitr::opts_chunk$set(echo = FALSE, comment=NA, warning = FALSE, message = FALSE)
+options(knitr.table.format = "html", dplyr.summarise.inform = FALSE, tidyverse.quiet = TRUE, width = 100)
+```
+
+```{r load-libraries, warning=FALSE, message=FALSE, include=FALSE}
+rm(list = ls())
+library(tidyverse)
+library(scales)    # For trans_format()
+library(viridis)
+library(plotly)
+```
+
+# About this exploration
+
+The aim of this code is to explore _ratios_ of components. Here's a bit of notation to help us along.
+
+* $i$ is the (row) index of each compositional observation
+* $j$ and $k$ are the used to index different components (columns)
+* $a_{ij}$ is the _actual_ proportion of component $j$ in composition $i$
+* $p_{ij}$ is the _predicted_ proportion of component $j$ in composition $i$
+  * I'm going to leave out the index of the model making that prediction... already got enough subscripts!
+* $r_{ij} = \frac{p_{ij}}{a_{ij}}$ is the _multiplicative residual of component $j$ in composition $i$
+  * If $r_{ij} < 1$, we have underestimated the abundance of that component
+  * If $r_{ij} = 1$, we have correctly estimated the abundance of that component
+  * If $r_{ij} > 1$, we have overestimated the abundance of that component
+  
+  
+I write
+
+* $a_{ij/k} = \frac{a_{ij}}{a_{ik}}$, the ratio of _actual_ components $j$ and $k$ in composition $i$
+* $p_{ij/k} = \frac{p_{ij}}{p_{ik}}$, the ratio of _predicted_ components $j$ and $k$ in composition $i$
+* $r_{ijk} = \frac{p_{ij/k}}{a_{ij/k}}$, is the multiplicative residual of components $j$ and $k$ in composition $i$
+
+I'm interested to plot how well different models estimate the _ratios_ of components. My plan is to plot $r_{ijk}$ vs $p_{ij/k}$ for each model.
+
+# Read in Khoa's data
+This was generated in `DL-Exploration03.Rmd`
+
+```{r}
+khoa.ratios <- readRDS("./data/khoa.ratios.RDS")
+```
+
+# Look at all the ratios for models 1 to 8
+
+```{r}
+npoints <- 100
+xlim <- c(1e-4,1e0)
+ylim <- c(1e-2, 1e2)
+
+clip <- function(x, low, high){
+  pmin(high, pmax(low, x)) 
+}
+```
+
+## Plot with points
+
+```{r eval=FALSE, echo=FALSE}
+for(Model in 1:8){
+  khoa.ratios %>% filter(model==Model, is.finite(`r_j/k`)) %>% # slice_sample(n=npoints) %>% 
+    mutate(
+      c_j = LETTERS[j],
+      c_k = LETTERS[k]
+    )  %>% 
+    ggplot(
+      aes(
+        x=clip(`p_j/k`, xlim[1], xlim[2]),
+        y=clip(`r_j/k`, ylim[1], ylim[2]))
+    ) +
+    geom_hline(yintercept=1,  lty=2) + 
+    geom_point(alpha=0.25, size=0.5) + 
+    #geom_smooth(method = "loess") + 
+    scale_x_log10(labels = trans_format("log10", math_format(10^.x))) +
+    scale_y_log10(labels = trans_format("log10", math_format(10^.x)), breaks=10^seq(from=-4, to=4, by=2)) +
+    coord_equal(xlim=xlim, ylim=ylim) + 
+    theme(axis.text.x = element_text(angle = 90)) +
+    facet_grid(c_j ~ c_k, labeller=label_both) + 
+    labs(
+      x="p_j/k", y="r_j/k",
+      title=sprintf("Model %d: r_j/k vs p_j/k", Model),
+      subtitle=sprintf("Showing points on a log-log scale from x=%0.1e to x=%0.1e", xlim[1], xlim[2]),
+      caption="Points with infinite residuals have been removed. Values outside the range of an axes have been set to the nearest in range value."
+    ) -> p
+  
+  ggsave(sprintf("plots/Model%d-multiplicative-residuals.png", Model), plot=p, width = 10, height=10, dpi=600)
+}
+```
+
+## Plot with bins
+
+Binwidths and color scales can help reveal details
+```{r}
+for(Model in 1:8){
+  khoa.ratios %>% filter(model==Model, is.finite(`r_j/k`)) %>%  # slice_sample(n=npoints) %>% 
+    mutate(
+      c_j = LETTERS[j],
+      c_k = LETTERS[k]
+    )  %>% 
+    ggplot(
+      aes(
+        x=clip(`p_j/k`, xlim[1], xlim[2]),
+        y=clip(`r_j/k`, ylim[1], ylim[2]))
+    ) +
+    geom_hline(yintercept=1,  lty=2) + 
+    geom_bin2d(bins=150)+
+    scale_fill_viridis(trans = "log10", option='H') +
+    scale_x_log10(labels = trans_format("log10", math_format(10^.x))) +
+    scale_y_log10(labels = trans_format("log10", math_format(10^.x)), breaks=10^seq(from=-4, to=4, by=2)) +
+    coord_equal(xlim=xlim, ylim=ylim) + 
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5)) +
+    facet_grid(c_j ~ c_k) + 
+    labs(
+      title=sprintf("Model %d", Model),
+      subtitle=expression(paste(r[j/k], " vs ", p[j/k])),
+      x=expression(p[j/k]), y=expression(r[j/k]),
+      caption="Points with infinite residuals have been removed. Values outside the range of an axes have been set to the nearest in range value."
+    ) -> p
+
+  ggsave(sprintf("plots/Model%d-multiplicative-residuals-.png", Model), plot=p, width = 10, height=10, dpi=600)
+}
+```
+
+```{r eval=FALSE, echo=FALSE}
+ggplot(tibble(x=1,y=1), aes(x=x, y=y)) + 
+  labs(
+    title=expression(paste("Model ", .(Model), ": ", r[j/k], " vs ", p[j/k])),
+    x=expression(p[j/k]), y=expression(r[j/k])
+  )
+```
+
+# Zeros!
+
+
+
+```{r}
+head(khoa.ratios,1000) %>% select(model, a_j, a_k, p_j, p_k) %>%
+  mutate(
+    bits=
+      8*(a_j != 0) +
+      4*(a_k != 0) +
+      2*(p_j != 0) +
+      1*(p_k != 0)
+  ) %>%
+  group_by(model) %>%
+  count(bits)
+```
+
+```{r}
+khoa.ratios %>% select(model, a_j, a_k, p_j, p_k) %>%
+  mutate(
+    bitstring=sprintf(
+      "%s%s%s%s",
+      ifelse(a_j != 0,  "1", "0"),
+      ifelse(a_k != 0,  "1", "0"),
+      ifelse(p_j != 0,  "1", "0"),
+      ifelse(p_k != 0,  "1", "0")
+    ) 
+  ) %>%
+  group_by(model) %>%
+  count(bitstring) -> khoa.ratios.zeros
+```
+
+
+```{r}
+khoa.ratios.zeros %>% ungroup %>%
+  mutate(
+    bitstring = fct_reorder(factor(bitstring), n)
+  ) %>%
+  ggplot(aes(y=n, x=bitstring, color=model, group=model)) + geom_point() + geom_line() + 
+  scale_y_log10() + coord_flip()
+```
+
+
+```{r}
+khoa <- readRDS("./data/khoa.RDS")
+```
+
+```{r}
+khoa %>% head(0) %>% dplyr::select(ends_with(".actual"   )) %>% ncol -> n
+start.time <- Sys.time()
+khoa %>%  # head(1000) %>%
+  mutate(
+    ID=factor(ID)
+  ) %>%
+  rowwise %>%
+  mutate(
+    actual    =list(c(A.actual,B.actual,C.actual,D.actual,E.actual,F.actual,G.actual,H.actual,I.actual)),
+    predicted =list(c(A.predicted,B.predicted,C.predicted,D.predicted,E.predicted,F.predicted,G.predicted,H.predicted,I.predicted))
+  )%>%
+  dplyr::select(model, ID, actual, predicted)  %>%
+  summarise(
+    model=model, j=1:n, actual=c(actual), predicted=c(predicted)
+  ) %>%
+  mutate(
+    zero=factor(
+      case_when(
+        (actual != 0) & (predicted != 0)  ~ "neither",
+        (actual == 0)                     ~ "actual",
+                        (predicted == 0)  ~ "predicted",
+        TRUE                              ~ "both"
+      )
+    )
+  ) %>%
+  group_by(model) %>%
+  count(zero)  -> khoa.zeros
+
+end.time <- Sys.time()
+time.taken <- round(end.time - start.time,2)
+time.taken
+```
+
+```{r}
+khoa.zeros %>% 
+  mutate(
+    zero=fct_reorder(zero, n)
+  ) %>%
+ggplot(aes(y=n, x=zero, color=model, group=model)) + geom_point() + geom_line() + 
+  scale_y_log10() + 
+  labs(title="Numbers of zero actual or predicted components") +
+  coord_flip() -> p
+ggplotly(p)
+```
+

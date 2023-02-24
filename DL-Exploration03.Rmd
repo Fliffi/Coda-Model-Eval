@@ -1,0 +1,229 @@
+---
+title: "DL Exploration 02"
+author: "David Lovell"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+
+```{r setup, include=FALSE}
+# Set options to control the behaviour of knitr, dplyr, etc
+knitr::opts_chunk$set(echo = FALSE, comment=NA, warning = FALSE, message = FALSE)
+options(knitr.table.format = "html", dplyr.summarise.inform = FALSE, tidyverse.quiet = TRUE, width = 100)
+```
+
+```{r load-libraries, warning=FALSE, message=FALSE, include=FALSE}
+rm(list = ls())
+library(tidyverse)
+library(scales)    # For trans_format()
+library(patchwork)
+```
+
+# About this exploration
+
+The aim of this code is to explore _ratios_ of components. Here's a bit of notation to help us along.
+
+* $i$ is the (row) index of each compositional observation
+* $j$ and $k$ are the used to index different components (columns)
+* $a_{ij}$ is the _actual_ proportion of component $j$ in composition $i$
+* $p_{ij}$ is the _predicted_ proportion of component $j$ in composition $i$
+  * I'm going to leave out the index of the model making that prediction... already got enough subscripts!
+* $r_{ij} = \frac{p_{ij}}{a_{ij}}$ is the _multiplicative residual of component $j$ in composition $i$
+  * If $r_{ij} < 1$, we have underestimated the abundance of that component
+  * If $r_{ij} = 1$, we have correctly estimated the abundance of that component
+  * If $r_{ij} > 1$, we have overestimated the abundance of that component
+  
+  
+I write
+
+* $a_{ij/k} = \frac{a_{ij}}{a_{ik}}$, the ratio of _actual_ components $j$ and $k$ in composition $i$
+* $p_{ij/k} = \frac{p_{ij}}{p_{ik}}$, the ratio of _predicted_ components $j$ and $k$ in composition $i$
+* $r_{ijk} = \frac{p_{ij/k}}{a_{ij/k}}$, is the multiplicative residual of components $j$ and $k$ in composition $i$
+
+I'm interested to plot how well different models estimate the _ratios_ of components. My plan is to plot $r_{ijk}$ vs $p_{ij/k}$ for each model.
+
+# Read in Khoa's data
+This was generated in `DL-Exploration01.Rmd`
+
+```{r}
+khoa <- readRDS("./data/khoa.RDS")
+```
+
+# Rearrange the data
+
+## Baby steps
+
+This was figured out in `DL-Exploration02.Rmd`
+Let's focus on components `A-C` of the first observation of `Model 1`:
+
+```{r eval=FALSE, echo=FALSE}
+# Attempt 1
+khoa %>% head(2) %>% select(model, ID, starts_with(LETTERS[1:3])) %>%  rowwise %>%
+  mutate(
+    actual   =list(c(select(., ends_with(".actual")))),
+    predicted=list(c(select(., ends_with(".predicted"))))
+  ) %>%
+  select(model, ID, actual, predicted) -> df
+df
+df$actual[1][[1]]
+
+# Attempt 2
+khoa %>% head(2) %>% select(model, ID, starts_with(LETTERS[1:3])) %>% rowwise %>%
+mutate(
+  actual   =list(matrix(select(., ends_with(".actual")), nrow=1, dimnames=list(NULL, component=LETTERS[1:3]))),
+  predicted=list(matrix(select(., ends_with(".predicted"))))
+) %>%
+  select(model, ID, actual, predicted) -> df
+df
+df$actual[1][[1]]
+
+# Attempt 3
+khoa %>% head(2) %>% select(model, ID, starts_with(LETTERS[1:3])) %>% rowwise %>%
+mutate(
+  actual    =list(matrix(c_across(ends_with(".actual"   )), nrow=1, dimnames=list(NULL, component=LETTERS[1:3]))),
+  predicted =list(matrix(c_across(ends_with(".predicted")), nrow=1, dimnames=list(NULL, component=LETTERS[1:3])))
+)%>%
+  select(model, ID, actual, predicted) -> df
+df
+df$actual[1][[1]]
+```
+
+
+```{r}
+khoa %>% head(2) %>% select(model, ID, starts_with(LETTERS[1:3])) %>% rowwise %>%
+mutate(
+  actual    =list(c_across(ends_with(".actual"   ))),
+  predicted =list(c_across(ends_with(".predicted")))
+)%>%
+  select(model, ID, actual, predicted) -> df
+
+df
+```
+
+Here's a function to generate a tibble of lower triangle indices
+```{r}
+lower.tri.indices <- function(n){
+  indices <- which(lower.tri(matrix(nrow=n, ncol=n)), arr.ind=TRUE)
+  tibble(
+    j=indices[,1],
+    k=indices[,2],
+  )
+}
+```
+
+Now let's use that to rearrange our baby data frame
+
+```{r}
+jk <- lower.tri.indices(length(df$actual[1][[1]]))
+df %>% rowwise %>%
+  summarise(
+    model=model, ID=ID, jk,
+    a_j=c(actual)[j],    a_k=c(actual)[k],
+    p_j=c(predicted)[j], p_k=c(predicted)[k]
+)
+```
+
+## Toddler steps
+
+Now let's use all 9 components of 2 observations
+```{r}
+khoa %>% head(2) %>% rowwise %>%
+mutate(
+  actual    =list(c_across(ends_with(".actual"   ))),
+  predicted =list(c_across(ends_with(".predicted")))
+)%>%
+  select(model, ID, actual, predicted) -> df
+
+df
+```
+
+```{r}
+jk <- lower.tri.indices(length(df$actual[1][[1]]))
+df %>% rowwise %>%
+  summarise(
+    model=model, ID=ID, jk,
+    a_j=c(actual)[j],    a_k=c(actual)[k],
+    p_j=c(predicted)[j], p_k=c(predicted)[k]
+) -> df.rearranged
+
+df.rearranged
+```
+
+So the 
+
+* `r nrow(df)` by `r ncol(khoa)` source data frame is rearranged into 
+* `r nrow(df.rearranged)` by `r ncol(df.rearranged)` target data frame
+
+that's a `r nrow(df.rearranged) * ncol(df.rearranged) / (nrow(df) * ncol(khoa))` increase...
+
+That's the price we pay for working in ratios!
+
+## Big boy steps
+
+Now let's use all 9 components of 2 observations and calculate some ratios!
+```{r}
+# Generate the lower triangle indices for the data
+khoa %>% head(0) %>% select(ends_with(".actual"   )) %>% ncol %>% lower.tri.indices -> jk
+
+khoa %>% head(2) %>% rowwise %>%
+  mutate(
+    actual    =list(c_across(ends_with(".actual"   ))),
+    predicted =list(c_across(ends_with(".predicted")))
+  )%>%
+  select(model, ID, actual, predicted) %>%
+  summarise(
+    model=model, ID=ID, jk,
+    a_j=c(actual)[j],    a_k=c(actual)[k],    `a_j/k`=a_j/a_k,
+    p_j=c(predicted)[j], p_k=c(predicted)[k], `p_j/k`=p_j/p_k,
+                                              `r_j/k`=`p_j/k` / `a_j/k`
+  )
+```
+
+## Teenager steps
+
+Now let's do the whole dataset and see how long it takes...
+```{r}
+
+khoa %>% head(0) %>% select(ends_with(".actual"   )) %>% names %>% cat(sep=",")
+khoa %>% head(0) %>% select(ends_with(".predicted")) %>% names %>% cat(sep=",")
+# Generate the lower triangle indices for the data
+khoa %>% head(0) %>% select(ends_with(".actual"   )) %>% ncol %>% lower.tri.indices -> jk
+
+# This runs slow as a wet week. Better to specify the variables explicitly
+# khoa %>% head(2000) %>%  rowwise %>%
+#   mutate(
+#     actual    =list(c_across(ends_with(".actual"   ))),
+#     predicted =list(c_across(ends_with(".predicted")))
+#   )%>%
+#   select(model, ID, actual, predicted) -> df
+# end.time <- Sys.time()
+# time.taken <- round(end.time - start.time,2)
+# time.taken
+
+start.time <- Sys.time()
+khoa %>% 
+  mutate(
+    ID=factor(ID)
+  ) %>%
+  rowwise %>%
+  mutate(
+    actual    =list(c(A.actual,B.actual,C.actual,D.actual,E.actual,F.actual,G.actual,H.actual,I.actual)),
+    predicted =list(c(A.predicted,B.predicted,C.predicted,D.predicted,E.predicted,F.predicted,G.predicted,H.predicted,I.predicted))
+  )%>%
+  select(model, ID, actual, predicted)  %>%
+  summarise(
+    model=model, ID=ID, jk,
+    a_j=c(actual)[j],    a_k=c(actual)[k],    `a_j/k`=a_j/a_k,
+    p_j=c(predicted)[j], p_k=c(predicted)[k], `p_j/k`=p_j/p_k,
+                                              `r_j/k`=`p_j/k` / `a_j/k`
+  ) -> khoa.ratios
+
+end.time <- Sys.time()
+time.taken <- round(end.time - start.time,2)
+time.taken
+```
+
+```{r}
+saveRDS(khoa.ratios, "./data/khoa.ratios.RDS")
+```
+

@@ -26,23 +26,23 @@ He's sent us the predictions made by 8 different models, and he's sent us the gr
 
 Our first job is to ensure we can ingest and interpret these data files.
 
-Let's try reading `method_1.csv`:
+Let's try reading `M1.csv`:
 
 ```{r}
-read_tsv("M1.csv")
+read_tsv("./data/M1.csv")
 ```
 
 Cool! That works. It is actually a TAB separated value file, not a `.csv` and the first column has no name (the string `...1` is used as a legal placeholder) so we can fix that with...
 
 ```{r}
-read_tsv("M1.csv") %>% rename(ID="...1")
+read_tsv("./data/M1.csv") %>% rename(ID="...1")
 ```
 
 # Try reading in the truth
 
 So, let's see what we have here:
 ```{r}
-read_tsv("truth.csv")
+read_tsv("./data/truth.csv")
 ```
 
 OK! So we have a similar file of IDs and (I hope) proportions.
@@ -51,8 +51,8 @@ OK! So we have a similar file of IDs and (I hope) proportions.
 
 I think a good way to do this is to do a database join using the ID as a key... I'm not quite sure how to do this, so I will have a play with some cut down data:
 ```{r}
-read_tsv("M1.csv", n_max=10, show_col_types = FALSE) %>% rename(ID="...1") %>% select(ID, A, B) -> method1
-read_tsv("truth.csv",    n_max=10, show_col_types = FALSE) %>% rename(ID="...1") %>% select(ID, A, B) -> truth
+read_tsv("./data/M1.csv", n_max=10, show_col_types = FALSE) %>% rename(ID="...1") %>% select(ID, A, B) -> method1
+read_tsv("./data/truth.csv",    n_max=10, show_col_types = FALSE) %>% rename(ID="...1") %>% select(ID, A, B) -> truth
 ```
 
 Let's do a _full_ join (I think!) using the suffixes `.pred` for "predicted" and `.act` for "actual"
@@ -71,15 +71,15 @@ There is probably a neater more compact way to do this, but I'm happy to be verb
 n_max <- 10
 bind_rows(
   .id="model",
-  read_tsv("M1.csv", n_max=n_max, show_col_types = F),
-  read_tsv("M2.csv", n_max=n_max, show_col_types = F)
+  read_tsv("./data/M1.csv", n_max=n_max, show_col_types = F),
+  read_tsv("./data/M2.csv", n_max=n_max, show_col_types = F)
 ) %>% 
   rename(ID="...1") -> predictions
 ```
 
 Now get the truth:
 ```{r}
-read_tsv("truth.csv",    n_max=n_max, show_col_types = F) %>% rename(ID="...1")  -> truth
+read_tsv("./data/truth.csv",    n_max=n_max, show_col_types = F) %>% rename(ID="...1")  -> truth
 ```
 
 Now join to the truth:
@@ -146,21 +146,21 @@ ggplot(khoa.long, aes(x=act, y=pred)) +
 n_max <- Inf
 bind_rows(
   .id="model",
-  read_tsv("method_1.csv", n_max=n_max, show_col_types = F),
-  read_tsv("method_2.csv", n_max=n_max, show_col_types = F),
-  read_tsv("method_3.csv", n_max=n_max, show_col_types = F),
-  read_tsv("method_4.csv", n_max=n_max, show_col_types = F),
-  read_tsv("method_5.csv", n_max=n_max, show_col_types = F),
-  read_tsv("method_6.csv", n_max=n_max, show_col_types = F),
-  read_tsv("method_7.csv", n_max=n_max, show_col_types = F),
-  read_tsv("method_8.csv", n_max=n_max, show_col_types = F)
+  read_tsv("./data/M1.csv", n_max=n_max, show_col_types = F),
+  read_tsv("./data/M2.csv", n_max=n_max, show_col_types = F),
+  read_tsv("./data/M3.csv", n_max=n_max, show_col_types = F),
+  read_tsv("./data/M4.csv", n_max=n_max, show_col_types = F),
+  read_tsv("./data/M5.csv", n_max=n_max, show_col_types = F),
+  read_tsv("./data/M6.csv", n_max=n_max, show_col_types = F),
+  read_tsv("./data/M7.csv", n_max=n_max, show_col_types = F),
+  read_tsv("./data/M8.csv", n_max=n_max, show_col_types = F)
 ) %>% 
   rename(ID="...1") -> predictions
 ```
 
 Now get the truth:
 ```{r}
-read_tsv("truth.csv",    n_max=n_max, show_col_types = F) %>% rename(ID="...1")  -> truth
+read_tsv("./data/truth.csv",    n_max=n_max, show_col_types = F) %>% rename(ID="...1")  -> truth
 ```
 
 Now join to the truth:
@@ -176,6 +176,11 @@ khoa %>%
     names_pattern = "(.).(.*)") %>%
   pivot_longer(cols=-c(model, ID, label), names_to = "component") %>%
   pivot_wider(names_from = label) -> khoa.long
+```
+
+```{r}
+saveRDS(khoa, "./data/khoa.RDS")
+saveRDS(khoa.long, "./data/khoa.long.RDS")
 ```
 
 # Visualise data
@@ -309,7 +314,7 @@ ggplot(aes(x=predicted, y=actual)) +
 ```
 
 Yuk... lumpy contours... let's log the data _then_ plot the contours:
-```{r}
+```{r eval=FALSE}
 khoa.long %>% filter(actual > 0, predicted > 0) %>% slice_sample(n=npoints) %>% 
 ggplot(aes(x=log10(predicted), y=log10(actual))) +
   geom_abline(slope=1, color="white") + 
@@ -363,7 +368,7 @@ ggplot(
 
 The big'un. I'm setting `eval=FALSE` so I can knit this document in a reasonable time.
 
-```{r eval=TRUE}
+```{r eval=FALSE}
 xlim <- c(1e-9,1e0)
 ylim <- c(1e-4, 1e4)
 
@@ -394,7 +399,7 @@ ggplot(
 ```
 
 
-```{r}
+```{r eval=FALSE}
 ggsave("plots/relative-vs-actual.png", width = 10, height=10, dpi=600)
 ```
 
